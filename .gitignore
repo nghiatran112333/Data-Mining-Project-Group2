@@ -1,0 +1,8 @@
+.venv/
+.idea/
+__pycache__/
+*.pyc
+.streamlit/
+# Loại bỏ các file dữ liệu nặng (nếu bạn muốn giữ lại thì xóa 2 dòng dưới)
+*.pkl
+*.csv
