@@ -165,7 +165,7 @@ def main():
         st.sidebar.header("Cấu hình Phân Cụm")
         algo_choice = st.sidebar.selectbox(
             "Chọn thuật toán phân cụm",
-            ["K-Means", "DBSCAN", "Hierarchical", "GMM", "Mean Shift"]
+            ["K-Means", "DBSCAN", "Hierarchical"]
         )
         k_val = st.sidebar.slider("Số lượng cụm (K)", 2, 8, 3)
         
@@ -181,10 +181,6 @@ def main():
             clusters = cm.run_dbscan(eps=eps, min_samples=min_samples)
         elif algo_choice == "Hierarchical":
             clusters = cm.run_hierarchical(n_clusters=k_val)
-        elif algo_choice == "GMM":
-            clusters = cm.run_gmm(n_components=k_val)
-        elif algo_choice == "Mean Shift":
-            clusters = cm.run_meanshift()
             
         # Lấy kết quả đánh giá
         summary = cm.get_summary()
@@ -202,10 +198,10 @@ def main():
         )
         
         # Thêm bảng so sánh tất cả thuật toán
-        if st.checkbox("So sánh hiệu năng tất cả thuật toán (Silhouette Score)"):
+        if st.checkbox("So sánh hiệu năng 3 thuật toán (Silhouette Score)"):
             with st.spinner("Đang tính toán so sánh..."):
                 # Đảm bảo tất cả đã chạy để lấy score
-                cm.run_kmeans(3); cm.run_dbscan(); cm.run_hierarchical(3); cm.run_gmm(3); cm.run_meanshift()
+                cm.run_kmeans(k_val); cm.run_dbscan(); cm.run_hierarchical(k_val)
                 all_summary = cm.get_summary()
                 compare_df = pd.DataFrame(all_summary).T.reset_index().rename(columns={'index': 'Thuật toán'})
                 st.write("### 🏆 Bảng so sánh các thuật toán")

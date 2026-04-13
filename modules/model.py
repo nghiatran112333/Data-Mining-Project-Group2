@@ -82,20 +82,6 @@ def train_and_evaluate_models(X_train, y_train, X_test, y_test, preprocess, use_
                 n_jobs=-1,
                 random_state=42
             ))
-        ]),
-        "SVC_Linear": Pipeline(steps=[
-            ("pre", preprocess),
-            ("clf", SVC(
-                kernel='linear',
-                C=0.5,
-                class_weight='balanced',
-                probability=True,
-                random_state=42
-            ))
-        ]),
-        "KNeighbors": Pipeline(steps=[
-            ("pre", preprocess),
-            ("clf", KNeighborsClassifier(n_neighbors=11))
         ])
     }
 
@@ -113,6 +99,12 @@ def train_and_evaluate_models(X_train, y_train, X_test, y_test, preprocess, use_
                 random_state=42,
                 n_jobs=-1
             ))
+        ])
+    else:
+        # Fallback if XGB is not available
+        models["KNeighbors"] = Pipeline(steps=[
+            ("pre", preprocess),
+            ("clf", KNeighborsClassifier(n_neighbors=11))
         ])
 
     metrics = []

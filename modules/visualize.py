@@ -33,7 +33,7 @@ def display_eda_dashboard(df: pd.DataFrame):
 
     # 2. Phân phối biến số
     st.markdown("### Phân phối các biến quan trọng theo Risk")
-    features_to_plot = ['Age', 'Credit_Amount', 'Duration']
+    features_to_plot = ['Age', 'Credit_Amount', 'Income']
     cols = st.columns(3)
     
     for i, feature in enumerate(features_to_plot):
@@ -47,7 +47,7 @@ def display_eda_dashboard(df: pd.DataFrame):
 
     # 3. Biến phân loại
     st.markdown("### Phân tích biến phân loại")
-    cat_cols_plot = ['Housing', 'Purpose', 'Job']
+    cat_cols_plot = ['Housing', 'Purpose', 'loan_grade']
     cols_cat = st.columns(3)
     for i, col in enumerate(cat_cols_plot):
         if col in df.columns:
@@ -245,12 +245,14 @@ def display_prediction_form(X, models, numeric_cols, categorical_cols, df_raw):
                     avg_good = good_customers[col].mean()
                     
                     # Nếu giá trị tệ hơn mức trung bình đáng kể
-                    if col == 'Credit_Amount' and val > avg_good * 1.2:
-                        comparison.append(f"- **Số tiền vay ({val:,.0f})** cao hơn trung bình (Good: {avg_good:,.0f}).")
-                    elif col == 'Duration' and val > avg_good * 1.2:
-                        comparison.append(f"- **Kỳ hạn vay ({val:.0f} tháng)** dài hơn trung bình (Good: {avg_good:.0f} tháng).")
-                    elif col == 'Age' and val < avg_good * 0.8:
-                        comparison.append(f"- **Tuổi ({val:.0f})** trẻ hơn mức trung bình của nhóm uy tín ({avg_good:.0f}).")
+                    if col == 'Credit_Amount' and val > avg_good * 1.5:
+                        comparison.append(f"- **Số tiền vay ({val:,.0f})** cao hơn nhiều so với trung bình nhóm an toàn ({avg_good:,.0f}).")
+                    elif col == 'Income' and val < avg_good * 0.7:
+                        comparison.append(f"- **Thu nhập ({val:,.0f})** thấp hơn mức trung bình của nhóm an toàn ({avg_good:,.0f}).")
+                    elif col == 'Interest_Rate' and val > avg_good * 1.2:
+                        comparison.append(f"- **Lãi suất ({val:.2f}%)** cao hơn mức trung bình thường thấy ({avg_good:.2f}%).")
+                    elif col == 'Age' and val < 22:
+                        comparison.append(f"- **Độ tuổi ({val:.0f})** thuộc nhóm khách hàng trẻ, thường có rủi ro cao hơn.")
                 
                 # So sánh biến phân loại
                 for col in categorical_cols:
@@ -295,25 +297,48 @@ def display_mining_dashboard(X, clusters, X_pca, anomalies, n_clusters, df_origi
     df_temp['Cluster'] = clusters
     
     # Group by và tính mean các cột số
-    profile = df_temp.groupby('Cluster')[['Age', 'Credit_Amount', 'Duration']].mean().reset_index()
+    cols_to_profile = [col for col in ['Age', 'Credit_Amount', 'Income', 'Interest_Rate'] if col in df_temp.columns]
+    profile = df_temp.groupby('Cluster')[cols_to_profile].mean().reset_index()
     # Tính số lượng và tỷ lệ Risk cho từng cụm
     cluster_counts = df_temp.groupby('Cluster').size().reset_index(name='Số Lượng KH')
     
     # Phân tích Business - Cluster vs Risk
     risk_by_cluster = df_temp.groupby(['Cluster', 'Risk']).size().unstack(fill_value=0)
-    # Map Risk nếu cần (nếu Risk là 0/1 thì 1=Good, 0=Bad)
-    if 1 in risk_by_cluster.columns and 0 in risk_by_cluster.columns:
-        risk_by_cluster['Tỷ lệ Bad (%)'] = (risk_by_cluster[0] / (risk_by_cluster[0] + risk_by_cluster[1]) * 100).round(1)
+    
+    # --- FIX TRIỆT ĐỂ: Reset tên cột và index để tránh KeyError ---
+    risk_by_cluster.columns = [str(c) for c in risk_by_cluster.columns]
+    risk_by_cluster.columns.name = None
     
     profile = profile.merge(cluster_counts, on='Cluster')
-    if not risk_by_cluster.empty:
-        profile = profile.merge(risk_by_cluster[['Tỷ lệ Bad (%)']], on='Cluster', how='left')
+    
+    # Tính toán an toàn với try-except
+    try:
+        # Nhận diện cột 'Xấu' (Bad) và 'Tốt' (Good) linh hoạt
+        bad_col = next((c for c in risk_by_cluster.columns if c.lower() in ['0', 'bad', 'xấu', '0.0']), None)
+        good_col = next((c for c in risk_by_cluster.columns if c.lower() in ['1', 'good', 'tốt', '1.0']), None)
+
+        if bad_col and good_col:
+            # Tính tỷ lệ % nợ xấu trực tiếp
+            bad_series = risk_by_cluster[bad_col]
+            total_series = risk_by_cluster[bad_col] + risk_by_cluster[good_col]
+            risk_rate = (bad_series / total_series * 100).round(1)
+            
+            # Gán vào profile thông qua map(Cluster) để tránh lỗi merge indexing
+            profile['Tỷ lệ Bad (%)'] = profile['Cluster'].map(risk_rate)
+        else:
+            profile['Tỷ lệ Bad (%)'] = 0.0
+    except Exception:
+        profile['Tỷ lệ Bad (%)'] = 0.0
+    
+    # Đảm bảo không có giá trị NaN
+    profile['Tỷ lệ Bad (%)'] = profile['Tỷ lệ Bad (%)'].fillna(0.0)
     
     # Đổi tên cột cho đẹp
     profile = profile.rename(columns={
         'Age': 'Tuổi TB', 
-        'Credit_Amount': 'Tín Dụng TB', 
-        'Duration': 'Kỳ Hạn TB'
+        'Credit_Amount': 'Vay TB', 
+        'Income': 'Thu Nhập TB',
+        'Interest_Rate': 'Lãi Suất TB'
     })
     
     st.dataframe(profile.style.background_gradient(cmap='Blues'), use_container_width=True)

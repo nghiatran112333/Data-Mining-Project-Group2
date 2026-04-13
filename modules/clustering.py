@@ -32,9 +32,12 @@ class ClusteringModule:
         if isinstance(self.data, pd.DataFrame):
             # Chỉ lấy các cột số để phân cụm
             numeric_data = self.data.select_dtypes(include=[np.number])
+            # Điền giá trị thiếu bằng median trước khi scale
+            numeric_data = numeric_data.fillna(numeric_data.median())
             self.scaled_data = scaler.fit_transform(numeric_data)
         else:
-            self.scaled_data = scaler.fit_transform(self.data)
+            data = np.where(np.isnan(self.data), np.nanmedian(self.data, axis=0), self.data)
+            self.scaled_data = scaler.fit_transform(data)
 
     def run_kmeans(self, n_clusters=3):
         """
@@ -64,26 +67,6 @@ class ClusteringModule:
         self.labels['Hierarchical'] = model.fit_predict(self.scaled_data)
         self.models['Hierarchical'] = model
         return self.labels['Hierarchical']
-
-    def run_gmm(self, n_components=3):
-        """
-        4. Gaussian Mixture Models (GMM): Phân cụm xác suất.
-        Giả định dữ liệu được tạo ra từ nhiều phân phối Gaussian.
-        """
-        model = GaussianMixture(n_components=n_components, random_state=42)
-        self.labels['GMM'] = model.fit_predict(self.scaled_data)
-        self.models['GMM'] = model
-        return self.labels['GMM']
-
-    def run_meanshift(self):
-        """
-        5. Mean Shift: Phân cụm dựa trên việc tìm cực đại của mật độ.
-        Tự động xác định số lượng cụm.
-        """
-        model = MeanShift()
-        self.labels['Mean Shift'] = model.fit_predict(self.scaled_data)
-        self.models['Mean Shift'] = model
-        return self.labels['Mean Shift']
 
     def get_summary(self):
         """

@@ -15,26 +15,35 @@ def clean_column_names(df: pd.DataFrame) -> pd.DataFrame:
     """Làm sạch tên cột: bỏ khoảng trắng, ký tự đặc biệt, chuẩn hoá tên phổ biến."""
     col_mapping = {}
     for col in df.columns:
+        # Standardize known columns from credit_risk_dataset.csv
         clean_col = re.sub(r'[^A-Za-z0-9_]+', ' ', col.strip()).strip().replace(' ', '_')
-
+        
+        col_lower = clean_col.lower()
+        if 'person_age' in col_lower:
+            clean_col = 'Age'
+        elif 'loan_amnt' in col_lower:
+            clean_col = 'Credit_Amount'
+        elif 'person_home_ownership' in col_lower:
+            clean_col = 'Housing'
+        elif 'loan_intent' in col_lower:
+            clean_col = 'Purpose'
+        elif 'loan_status' in col_lower:
+            clean_col = 'Risk'
+        elif 'person_income' in col_lower:
+            clean_col = 'Income'
+        elif 'person_emp_length' in col_lower:
+            clean_col = 'Job_Tenure'
+        elif 'loan_int_rate' in col_lower:
+            clean_col = 'Interest_Rate'
+            
+        # Old German data mapping (for backward compatibility)
         if 'Credit amount' in col or 'Credit_Amount' in col:
             clean_col = 'Credit_Amount'
         elif 'Saving accounts' in col or 'Saving_Accounts' in col:
             clean_col = 'Saving_Accounts'
         elif 'Checking account' in col or 'Checking_Account' in col:
             clean_col = 'Checking_Account'
-
-        # Standardize known columns
-        col_lower = clean_col.lower()
-        if 'credit' in col_lower and 'amount' in col_lower:
-            clean_col = 'Credit_Amount'
-        elif 'duration' in col_lower:
-            clean_col = 'Duration'
-        elif 'age' in col_lower:
-            clean_col = 'Age'
-        elif 'risk' in col_lower:
-            clean_col = 'Risk'
-
+            
         col_mapping[col] = clean_col
 
     df = df.rename(columns=col_mapping)
@@ -44,20 +53,31 @@ def clean_column_names(df: pd.DataFrame) -> pd.DataFrame:
 @st.cache_data
 def load_and_create_data() -> pd.DataFrame:
     """
-    Đọc dữ liệu từ synthetic_credit_approval_data.csv.
-    Nếu không tìm thấy file thì tạo dữ liệu mẫu (fallback).
+    Đọc dữ liệu từ credit_risk_dataset.csv.
+    Nếu không tìm thấy file thì thảo luận tạo dữ liệu mẫu.
     """
-    # Assuming the data is in the parent directory or same directory relative to execution
-    default_path = os.path.join("mayhoc", "synthetic_credit_approval_data.csv")
-    if not os.path.exists(default_path):
-         default_path = "synthetic_credit_approval_data.csv"
+    # Prefer the newly uploaded Kaggle dataset
+    possible_paths = [
+        "credit_risk_dataset.csv",
+        os.path.join("mayhoc", "synthetic_credit_approval_data.csv"),
+        "synthetic_credit_approval_data.csv"
+    ]
+    
+    df = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            df = pd.read_csv(path)
+            df = clean_column_names(df)
+            
+            # Special logic for the new Kaggle dataset mapping Risk 0/1
+            # In Kaggle dataset: 1 = default (Bad), 0 = non-default (Good)
+            # We want: 1 = Good, 0 = Bad
+            if 'Risk' in df.columns and set(df['Risk'].unique()).issubset({0, 1}):
+                df['Risk'] = df['Risk'].map({0: 1, 1: 0})
+            
+            return df
 
-    if os.path.exists(default_path):
-        df = pd.read_csv(default_path)
-        df = clean_column_names(df)
-        return df
-
-    # Fallback: tạo dữ liệu mẫu CÓ CẤU TRÚC (để Clustering hoạt động tốt)
+    # Fallback: tạo dữ liệu mẫu CÓ CẤU TRÚC
     n_samples = 50000
     np.random.seed(42)
     
@@ -136,14 +156,14 @@ def process_data(df: pd.DataFrame):
     with st.sidebar.expander("⚙️ Tham số huấn luyện (Nâng cao)", expanded=False):
         max_rows = st.number_input(
             "Số dòng tối đa dùng để huấn luyện",
-            min_value=2000, max_value=min(50000, len(df)),
-            value=min(10000, len(df)), step=1000
+            min_value=2000, max_value=min(100000, len(df)),
+            value=min(15000, len(df)), step=1000
         )
         if len(df) > max_rows:
             df = df.sample(max_rows, random_state=42).reset_index(drop=True)
-            st.caption(f"Đang sample {max_rows} dòng.")
+            st.caption(f"ℹ️ Đang lấy mẫu {max_rows} dòng để tối ưu tốc độ. Bạn xem đầy đủ dữ liệu tại tab 'Khám phá dữ liệu'.")
             
-        test_size = st.slider("Tỷ lệ test (%)", 10, 40, value=30, step=5) / 100.0
+        test_size = st.slider("Tỷ lệ test (%)", 10, 40, value=20, step=5) / 100.0
     if 'Risk' in df.columns:
         target_col = 'Risk'
     else:
@@ -188,8 +208,10 @@ def process_data(df: pd.DataFrame):
     categorical_cols = X.select_dtypes(include=['object', 'category']).columns.tolist()
 
     for col in numeric_cols:
+        df[col] = df[col].fillna(df[col].median())
         X[col] = X[col].fillna(X[col].median())
     for col in categorical_cols:
+        df[col] = df[col].fillna(df[col].mode()[0])
         X[col] = X[col].fillna(X[col].mode()[0])
 
     # 5. Chia train/test
